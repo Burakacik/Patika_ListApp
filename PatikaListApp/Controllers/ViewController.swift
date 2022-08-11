@@ -6,12 +6,13 @@
 //
 
 import UIKit
+import CoreData
 
 class ViewController: UIViewController {
     
     @IBOutlet weak var tableView: UITableView!
     
-    var data = [String]()
+    var data = [NSManagedObject]()
     var alertController = UIAlertController()
     
     
@@ -20,7 +21,8 @@ class ViewController: UIViewController {
         
         tableView.delegate = self
         tableView.dataSource = self
-
+        
+        fetch()
         
     }
 
@@ -30,9 +32,20 @@ class ViewController: UIViewController {
                      message: "Listedeki bütün öğeleri silmek istediğinize emin misiniz?",
                      defaultButtonTitle: "Evet",
                      cancelButtonTitle: "Vazgeç") { _ in
-            self.data.removeAll()
-            self.tableView.reloadData()
+            
+            let appDelegate = UIApplication.shared.delegate as? AppDelegate
+            
+            let managedObjectContext = appDelegate?.persistentContainer.viewContext
+            
+            for item in self.data {
+                managedObjectContext?.delete(item)
+            }
+            
+            try? managedObjectContext?.save()
+            
+            self.fetch()
         }
+        
     }
     
     @IBAction func didAddBarButtonItemTapped(_ sender: Any) {
@@ -49,8 +62,22 @@ class ViewController: UIViewController {
                      defaultButtonHandler: { _ in
             let text = self.alertController.textFields?.first?.text
             if text != "" {
-                self.data.append((text)!)
-                self.tableView.reloadData()
+                
+                let appDelegate = UIApplication.shared.delegate as? AppDelegate
+                
+                let managedObjectContext = appDelegate?.persistentContainer.viewContext
+                
+                let entity = NSEntityDescription.entity(forEntityName: "ListItem",
+                                                        in: managedObjectContext!)
+                
+                let listItem = NSManagedObject(entity: entity!,
+                                               insertInto: managedObjectContext)
+                
+                listItem.setValue(text, forKey: "title")
+                
+                try? managedObjectContext?.save()
+                
+                self.fetch()
             } else {
                 self.presentWarningAlert()
             }
@@ -97,6 +124,18 @@ class ViewController: UIViewController {
     }
     
     
+    func fetch() {
+        let appDelegate = UIApplication.shared.delegate as? AppDelegate
+        
+        let managedObjectContext = appDelegate?.persistentContainer.viewContext
+        
+        let fetchRequest = NSFetchRequest<NSManagedObject>(entityName: "ListItem")
+        
+        data = try! managedObjectContext!.fetch(fetchRequest)
+        
+        tableView.reloadData()
+    }
+    
 }
 
 
@@ -109,7 +148,8 @@ extension ViewController: UITableViewDelegate, UITableViewDataSource {
     
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "defaultCell", for: indexPath)
-        cell.textLabel?.text = data[indexPath.row]
+        let listItem = data[indexPath.row]
+        cell.textLabel?.text = listItem.value(forKey: "title") as? String
         return cell
     }
     
@@ -117,21 +157,39 @@ extension ViewController: UITableViewDelegate, UITableViewDataSource {
         
         let deleteAction = UIContextualAction(style: .destructive,
                                               title: "Sil") { _, _, _ in
-            self.data.remove(at: indexPath.row)
-            self.tableView.reloadData()
+            
+            let appDelegate = UIApplication.shared.delegate as? AppDelegate
+            
+            let managedObjectContext = appDelegate?.persistentContainer.viewContext
+            
+            managedObjectContext?.delete(self.data[indexPath.row])
+            
+            try? managedObjectContext?.save()
+            
+            self.fetch()
+            
         }
         
         let editAction = UIContextualAction(style: .normal,
                                             title: "Düzenle") { _, _, _ in
             self.presentAlert(title: "Eleman Düzenle",
-                              message: "'\(self.data[indexPath.row])'", //Eleman düzenleme alert ekranında düzenlenecek elemanı gösterir
+                              message: "'\(self.data[indexPath.row].value(forKey: "title")!)'", //Eleman düzenleme alert ekranında düzenlenecek elemanı gösterir
                               defaultButtonTitle: "Düzenle",
                               cancelButtonTitle: "Vazgeç",
                               isTextFieldAvailable: true,
                               defaultButtonHandler: { _ in
                 let text = self.alertController.textFields?.first?.text
                 if text != "" {
-                    self.data[indexPath.row] = text!
+                    let appDelegate = UIApplication.shared.delegate as? AppDelegate
+                    
+                    let managedObjectContext = appDelegate?.persistentContainer.viewContext
+                    
+                    self.data[indexPath.row].setValue(text, forKey: "title")
+                    
+                    if managedObjectContext!.hasChanges {
+                        try? managedObjectContext?.save()
+                    }
+                    
                     self.tableView.reloadData()
                 } else {
                     self.presentWarningAlert()
